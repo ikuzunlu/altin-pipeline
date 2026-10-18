@@ -10,6 +10,7 @@ TICKERS = {
     "CL=F": "oil_usd",        # Ham petrol
     "USDTRY=X": "usd_try",    # Dolar/TL kuru
     "SI=F": "silver_usd",     # Gümüş vadeli işlem (ons/USD)
+    "EURTRY=X": "eur_try",    # Euro/TL kuru
 }
 
 

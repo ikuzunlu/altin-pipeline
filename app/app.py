@@ -34,12 +34,12 @@ def canli_veri_yukle() -> pd.DataFrame:
     sql = """
         SELECT tarih, sembol, kapanis
         FROM ham_fiyatlar
-        WHERE sembol IN ('gold_usd', 'usd_try')
+        WHERE sembol IN ('gold_usd', 'usd_try', 'eur_try')
         ORDER BY tarih
     """
     uzun = pd.read_sql(sql, engine, parse_dates=["tarih"])
     genis = uzun.pivot(index="tarih", columns="sembol", values="kapanis")
-    genis = genis.dropna()  # Altın ya da kurdan biri yoksa o gün gram altın hesaplanamaz
+    genis = genis.dropna(subset=["gold_usd", "usd_try"])  # Altın ya da kurdan biri yoksa o gün gram altın hesaplanamaz
     genis["gram_altin_try"] = genis["gold_usd"] / ONS_GRAM * genis["usd_try"]
     return genis
 
@@ -67,10 +67,11 @@ canli = canli_veri_yukle()
 son, onceki = canli.iloc[-1], canli.iloc[-2]
 gunluk_degisim = (son["gram_altin_try"] / onceki["gram_altin_try"] - 1) * 100
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("Gram altın (TL)", f"{son['gram_altin_try']:,.2f}", delta=f"{gunluk_degisim:+.2f}%")
 col2.metric("Ons altın (USD)", f"{son['gold_usd']:,.2f}")
 col3.metric("Dolar/TL", f"{son['usd_try']:,.4f}")
+col4.metric("Euro/TL", f"{son['eur_try']:,.4f}")
 st.caption(f"Son veri tarihi: {canli.index[-1]:%d.%m.%Y}  ·  Toplam {len(canli):,} işlem günü")
 
 donem = st.radio("Dönem", ["Son 3 ay", "Son 1 yıl", "Tümü"], horizontal=True)
