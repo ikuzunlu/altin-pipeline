@@ -1,0 +1,19 @@
+# Veri
+yfinance==1.5.2
+pandas==2.2.3
+numpy==1.26.4
+
+# Veritabanı
+sqlalchemy==2.0.45
+psycopg2-binary==2.9.13
+
+# Model
+scikit-learn==1.5.2
+xgboost==3.1.2
+joblib==1.4.2
+
+# Arayüz
+streamlit==1.66.0
+
+# Ayarlar
+python-dotenv==1.2.4
