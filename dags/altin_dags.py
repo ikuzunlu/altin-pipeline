@@ -36,6 +36,7 @@ with DAG(
     schedule="0 1 * * 2-6",  # Salı–Cumartesi 01:00 (Pazartesi–Cuma kapanışlarından sonra)
     start_date=pendulum.datetime(2026, 10, 1, tz="Europe/Istanbul"),
     catchup=False,           # Kaçırılan günleri tek tek çalıştırma (pipeline zaten son 10 günü çekiyor)
+    max_active_runs=1,       # Aynı anda en fazla bir çalışma
     default_args=varsayilan,
     tags=["altin"],
 ) as gunluk:
@@ -51,6 +52,7 @@ with DAG(
     schedule="0 3 1 * *",    # Her ayın 1'i 03:00
     start_date=pendulum.datetime(2026, 10, 1, tz="Europe/Istanbul"),
     catchup=False,
+    max_active_runs=1,       # Aynı anda en fazla bir çalışma
     default_args=varsayilan,
     tags=["altin"],
 ) as aylik:
