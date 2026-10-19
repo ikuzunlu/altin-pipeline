@@ -33,5 +33,32 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+
+
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: altin-airflow
+    container_name: altin-airflow
+    command: standalone
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Istanbul
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/airflow
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/altin/src
+      - ./data:/opt/altin/data
+      - ./models:/opt/altin/models
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 volumes:
   pgdata:

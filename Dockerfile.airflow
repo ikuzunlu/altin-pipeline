@@ -1,0 +1,8 @@
+# Airflow'un resmi image'ı (Airflow'un kendi Python'u ve paketleri hazır geliyor)
+FROM apache/airflow:3.3.2-python3.12
+
+# Projenin kendi Python ortamı: Airflow'un paketlerinden AYRI.
+# requirements.txt yine tek doğru kaynak.
+COPY requirements.txt /tmp/altin-requirements.txt
+RUN python -m venv /home/airflow/altin-venv \
+ && /home/airflow/altin-venv/bin/pip install --no-cache-dir -r /tmp/altin-requirements.txt
