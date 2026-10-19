@@ -5,17 +5,18 @@ Altın Fiyatı Tahmin Projesi - Streamlit Arayüzü
     streamlit run app/app.py
 """
 
-import json
 import sys
 from pathlib import Path
 
+import altair as alt
 import joblib
 import pandas as pd
 import streamlit as st
+from sqlalchemy import text
 
 PROJE_KOKU = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJE_KOKU / "data"
-MODELS_DIR = PROJE_KOKU / "models"
+MODEL_DOSYASI = PROJE_KOKU / "models" / "model_gunluk.pkl"
 
 # src/ klasöründeki modülleri (load.py gibi) kullanabilmek için Python'a o klasörü de göster
 sys.path.append(str(PROJE_KOKU / "src"))
@@ -26,35 +27,44 @@ ONS_GRAM = 31.1035  # 1 ons = 31,1035 gram
 st.set_page_config(page_title="Altın Fiyatı Tahmin Projesi", layout="wide")
 
 
-# ---- Canlı veri: veritabanından ----
+# ================= Veri yükleme =================
 @st.cache_data(ttl=600)
 def canli_veri_yukle() -> pd.DataFrame:
     """Veritabanından altın ve kur verisini çekip gram altın fiyatını hesaplar."""
-    engine = baglanti_olustur()
     sql = """
         SELECT tarih, sembol, kapanis
         FROM ham_fiyatlar
         WHERE sembol IN ('gold_usd', 'usd_try', 'eur_try')
         ORDER BY tarih
     """
-    uzun = pd.read_sql(sql, engine, parse_dates=["tarih"])
+    with baglanti_olustur().connect() as conn:
+        uzun = pd.read_sql(text(sql), conn, parse_dates=["tarih"])
     genis = uzun.pivot(index="tarih", columns="sembol", values="kapanis")
-    genis = genis.dropna(subset=["gold_usd", "usd_try"])  # Altın ya da kurdan biri yoksa o gün gram altın hesaplanamaz
+    genis = genis.dropna(subset=["gold_usd", "usd_try"])  # Gram altın için ikisi şart
     genis["gram_altin_try"] = genis["gold_usd"] / ONS_GRAM * genis["usd_try"]
     return genis
 
 
-# ---- Model ve test sonuçları: dosyalardan ----
+@st.cache_data(ttl=600)
+def tahminleri_yukle() -> pd.DataFrame | None:
+    """tahminler tablosunu okur. Tablo henüz yoksa (predict.py hiç çalışmadıysa) None döner."""
+    try:
+        with baglanti_olustur().connect() as conn:
+            return pd.read_sql(text("SELECT * FROM tahminler ORDER BY tahmin_tarihi"),
+                               conn, parse_dates=["tahmin_tarihi"])
+    except Exception:
+        return None
+
+
+@st.cache_data
+def degerlendirme_yukle(ufuk: int) -> pd.DataFrame | None:
+    dosya = DATA_DIR / f"degerlendirme_ufuk{ufuk}.csv"
+    return pd.read_csv(dosya) if dosya.exists() else None
+
+
 @st.cache_resource
-def model_yukle():
-    model_rf = joblib.load(MODELS_DIR / "model_rf.pkl")
-    model_xgb = joblib.load(MODELS_DIR / "model_xgb.pkl")
-    X_test = pd.read_csv(DATA_DIR / "X_test.csv", index_col=0, parse_dates=True)
-    y_test = pd.read_csv(DATA_DIR / "y_pct_test.csv", index_col=0, parse_dates=True).iloc[:, 0]
-    gercek_fiyat = pd.read_csv(DATA_DIR / "gercek_fiyatlar.csv", index_col=0, parse_dates=True).iloc[:, 0]
-    with open(DATA_DIR / "sonuclar.json") as f:
-        sonuclar = json.load(f)
-    return model_rf, model_xgb, X_test, y_test, gercek_fiyat, sonuclar
+def model_bilgisi() -> dict | None:
+    return joblib.load(MODEL_DOSYASI)["bilgi"] if MODEL_DOSYASI.exists() else None
 
 
 st.title("🪙 Altın Fiyatı Tahmin Projesi")
@@ -71,89 +81,141 @@ col1, col2, col3, col4 = st.columns(4)
 col1.metric("Gram altın (TL)", f"{son['gram_altin_try']:,.2f}", delta=f"{gunluk_degisim:+.2f}%")
 col2.metric("Ons altın (USD)", f"{son['gold_usd']:,.2f}")
 col3.metric("Dolar/TL", f"{son['usd_try']:,.4f}")
-col4.metric("Euro/TL", f"{son['eur_try']:,.4f}")
-st.caption(f"Son veri tarihi: {canli.index[-1]:%d.%m.%Y}  ·  Toplam {len(canli):,} işlem günü")
+if "eur_try" in canli.columns and pd.notna(son.get("eur_try")):
+    col4.metric("Euro/TL", f"{son['eur_try']:,.4f}")
+
+son_tarih = canli.index[-1]
+uyari = "  ·  ⏳ Bugünün kapanışı henüz belli değil, değer anlık" if son_tarih.date() == pd.Timestamp.today().date() else ""
+st.caption(f"Son veri tarihi: {son_tarih:%d.%m.%Y}  ·  Toplam {len(canli):,} işlem günü{uyari}")
 
 donem = st.radio("Dönem", ["Son 3 ay", "Son 1 yıl", "Tümü"], horizontal=True)
 gun_sayisi = {"Son 3 ay": 90, "Son 1 yıl": 365, "Tümü": None}[donem]
-if gun_sayisi is None:
-    grafik_verisi = canli
+grafik = canli if gun_sayisi is None else canli[canli.index >= son_tarih - pd.Timedelta(days=gun_sayisi)]
+
+# Altair ile çiziyoruz ki dikey eksen 0'dan başlamasın, hareketler ezik görünmesin
+fiyat_grafigi = (
+    alt.Chart(grafik.reset_index())
+    .mark_line()
+    .encode(
+        x=alt.X("tarih:T", title=None),
+        y=alt.Y("gram_altin_try:Q", title="Gram altın (TL)", scale=alt.Scale(zero=False)),
+        tooltip=[alt.Tooltip("tarih:T", format="%d.%m.%Y"),
+                 alt.Tooltip("gram_altin_try:Q", format=",.2f", title="Gram altın")],
+    )
+)
+st.altair_chart(fiyat_grafigi, width="stretch")
+
+st.divider()
+
+# ================= Bölüm 2: Son tahmin =================
+st.header("🔮 Model tahmini")
+
+tahminler = tahminleri_yukle()
+bilgi = model_bilgisi()
+
+if tahminler is None or tahminler.empty:
+    st.info("Henüz tahmin yok. `python src/predict.py` komutunu çalıştır.")
 else:
-    grafik_verisi = canli[canli.index >= canli.index[-1] - pd.Timedelta(days=gun_sayisi)]
-st.line_chart(grafik_verisi["gram_altin_try"])
+    son_tahmin = tahminler.iloc[-1]
+    st.caption(f"{son_tahmin['tahmin_tarihi']:%d.%m.%Y} kapanışından bir sonraki iş günü için")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Model tahmini", f"{son_tahmin['tahmin_yuzde']:+.3f}%",
+                help="Random Forest'ın ertesi iş günü için gram altın değişim tahmini")
+    col2.metric("Baseline: geçmiş ortalama", f"{son_tahmin['baseline_yuzde']:+.3f}%",
+                help="2015'ten beri gram altının günlük ortalama değişimi")
+    tahmini_fiyat = son_tahmin["gram_fiyat"] * (1 + son_tahmin["tahmin_yuzde"] / 100)
+    col3.metric("Tahmin edilen gram altın", f"{tahmini_fiyat:,.2f} TL")
+
+    if bilgi:
+        st.caption(f"Model: {bilgi['model_adi']}  ·  Eğitim: {bilgi['egitim_zamani'][:10]}  ·  "
+                   f"Veri: {bilgi['veri_baslangic']} – {bilgi['veri_bitis']} "
+                   f"({bilgi['egitim_gun_sayisi']:,} gün, {len(bilgi['feature_kolonlari'])} feature)")
+
+    # ---- Canlı karne ----
+    st.subheader("📋 Canlı karne")
+    st.caption("Her gün yapılan tahmin, ertesi iş günü gerçekleşenle karşılaştırılıyor. "
+               "Tahminler bir kez kaydedildikten sonra değiştirilmiyor.")
+
+    sonuclanan = tahminler.dropna(subset=["gerceklesen_yuzde"])
+    if sonuclanan.empty:
+        st.info("Henüz sonucu belli olan tahmin yok. Karne her iş günü bir satır dolacak.")
+    else:
+        hata_model = (sonuclanan["tahmin_yuzde"] - sonuclanan["gerceklesen_yuzde"]).abs()
+        hata_baseline = (sonuclanan["baseline_yuzde"] - sonuclanan["gerceklesen_yuzde"]).abs()
+        model_kazandi = (hata_model < hata_baseline).sum()
+        yon_isabeti = ((sonuclanan["tahmin_yuzde"] > 0) == (sonuclanan["gerceklesen_yuzde"] > 0)).mean()
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Sonuçlanan tahmin", len(sonuclanan))
+        col2.metric("Ortalama hata: model", f"{hata_model.mean():.3f}%")
+        col3.metric("Ortalama hata: baseline", f"{hata_baseline.mean():.3f}%")
+        col4.metric("Modelin daha iyi olduğu gün", f"{model_kazandi} / {len(sonuclanan)}",
+                    help=f"Yön isabeti: %{yon_isabeti * 100:.0f}")
+
+    karne = tahminler.sort_values("tahmin_tarihi", ascending=False).head(20).copy()
+    karne["tahmin_tarihi"] = karne["tahmin_tarihi"].dt.strftime("%d.%m.%Y")
+    karne["gerceklesen_yuzde"] = pd.to_numeric(karne["gerceklesen_yuzde"])  # Hepsi boşken None yazısı yerine NaN olsun
+    karne = karne[["tahmin_tarihi", "gram_fiyat", "tahmin_yuzde", "baseline_yuzde", "gerceklesen_yuzde"]]
+    karne.columns = ["Tarih", "Gram altın (TL)", "Tahmin %", "Baseline %", "Gerçekleşen %"]
+    st.dataframe(karne.style.format({"Gram altın (TL)": "{:,.2f}", "Tahmin %": "{:+.3f}",
+                                      "Baseline %": "{:+.3f}", "Gerçekleşen %": "{:+.3f}"}, na_rep="—"),
+                 hide_index=True, width="stretch")
 
 st.divider()
 
-# ================= Bölüm 2: Model değerlendirmesi =================
-st.header("🧪 Model değerlendirmesi")
-st.caption(
-    "Bu bölüm Temmuz 2026'da eğitilen modelin test sonuçlarını gösteriyor. "
-    "Model, yeni feature'larla Faz 2'de yeniden eğitilecek."
-)
+# ================= Bölüm 3: Walk-forward değerlendirmesi =================
+st.header("🧪 Model değerlendirmesi (walk-forward)")
+st.caption("Her test yılı için model sadece o yıldan önceki verilerle eğitildi. "
+           "Hata (MAE) ne kadar düşükse o kadar iyi.")
 
-model_rf, model_xgb, X_test, y_test, gercek_fiyat, sonuclar = model_yukle()
+ufuk_secimi = st.radio("Tahmin ufku", ["Günlük (1 iş günü)", "Haftalık (5 iş günü)"], horizontal=True)
+ufuk = 1 if ufuk_secimi.startswith("Günlük") else 5
+degerlendirme = degerlendirme_yukle(ufuk)
 
-st.subheader("Model karşılaştırması (MAE - Ortalama Mutlak Hata)")
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Random Forest", f"{sonuclar['mae_rf']:.3f}%")
-col2.metric("XGBoost", f"{sonuclar['mae_xgb']:.3f}%")
-col3.metric("Baseline (0%)", f"{sonuclar['mae_baseline_sifir']:.3f}%",
-            delta="En iyi", delta_color="off")
-col4.metric("Baseline (dünkü devam)", f"{sonuclar['mae_baseline_devam']:.3f}%")
+if degerlendirme is None:
+    st.info(f"Sonuç dosyası yok. `python src/evaluate.py --ufuk {ufuk}` komutunu çalıştır.")
+else:
+    duragan = degerlendirme[degerlendirme["yontem"] == "duragan"].set_index("yil")
+    seviye = degerlendirme[degerlendirme["yontem"] == "seviye"].set_index("yil")
 
-st.info(
-    "📌 **Dürüst bulgu:** Hiçbir model, en basit baseline'ı (her zaman "
-    "'değişim olmayacak' varsayımı) geçemedi. Bu, günlük altın fiyat "
-    "değişiminin kısa vadede büyük ölçüde öngörülemez olduğunu gösteriyor "
-    "(etkin piyasa hipotezi ile tutarlı)."
-)
+    karsilastirma = pd.DataFrame({
+        "RF – eski (seviye)": seviye["mae_rf"],
+        "RF – yeni (durağan)": duragan["mae_rf"],
+        "Baseline: değişim olmaz": duragan["mae_base_sifir"],
+        "Baseline: geçmiş ortalama": duragan["mae_base_ort"],
+    })
+    uzun = karsilastirma.reset_index().melt(id_vars="yil", var_name="Yöntem", value_name="MAE (%)")
+    mae_grafigi = (
+        alt.Chart(uzun)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("yil:O", title="Test yılı", axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("MAE (%):Q", scale=alt.Scale(zero=False)),
+            # Baseline'lar gri tonlarda (arka plan), modeller belirgin renklerde
+            color=alt.Color("Yöntem:N", legend=alt.Legend(orient="bottom", title=None),
+                            scale=alt.Scale(domain=list(karsilastirma.columns),
+                                            range=["#E8833A", "#2E86DE", "#9E9E9E", "#5F5F5F"])),
+            strokeDash=alt.condition(alt.datum["Yöntem"] == "RF – eski (seviye)",
+                                     alt.value([5, 4]), alt.value([0])),
+            tooltip=["yil", "Yöntem", alt.Tooltip("MAE (%):Q", format=".3f")],
+        )
+    )
+    st.altair_chart(mae_grafigi, width="stretch")
 
-tab1, tab2, tab3 = st.tabs(["📊 Random Forest", "📊 XGBoost", "🔍 Feature Importance"])
+    n = len(duragan)
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Eski RF, 'değişim olmaz'ı geçtiği yıl",
+                f"{(seviye['mae_rf'] < seviye['mae_base_sifir']).sum()} / {n}")
+    col2.metric("Yeni RF, 'geçmiş ortalama'yı geçtiği yıl",
+                f"{(duragan['mae_rf'] < duragan['mae_base_ort']).sum()} / {n}")
+    col3.metric("Yeni RF, yönde 'hep yükselir'i geçtiği yıl",
+                f"{(duragan['yon_rf'] > duragan['yukselis_orani']).sum()} / {n}")
 
-for tab, model, ad in [(tab1, model_rf, "Random Forest"), (tab2, model_xgb, "XGBoost")]:
-    with tab:
-        st.subheader(f"{ad} — Tahmin vs Gerçek")
-        tahmin = model.predict(X_test)
-        karsilastirma = pd.DataFrame({
-            "Bugünkü fiyat (TL)": gercek_fiyat.values,
-            "Gerçek yarınki fiyat (TL)": gercek_fiyat.values * (1 + y_test.values / 100),
-            "Tahmin edilen yarınki fiyat (TL)": gercek_fiyat.values * (1 + tahmin / 100),
-            "Gerçek % değişim": y_test.values,
-            "Tahmin % değişim": tahmin,
-        }, index=X_test.index)
-        st.line_chart(karsilastirma[["Gerçek yarınki fiyat (TL)", "Tahmin edilen yarınki fiyat (TL)"]])
-        st.dataframe(karsilastirma.tail(15).style.format("{:.2f}"), width="stretch")
-
-with tab3:
-    st.subheader("Hangi değişken modele ne kadar etki ediyor?")
-    onem_df = pd.DataFrame({
-        "feature": sonuclar["feature_kolonlari"],
-        "Random Forest": model_rf.feature_importances_,
-        "XGBoost": model_xgb.feature_importances_,
-    }).set_index("feature").sort_values("Random Forest", ascending=False)
-    st.bar_chart(onem_df)
-
-st.divider()
-
-# ---- Test setinin son günü için tahmin ----
-son_test_tarihi = X_test.index[-1]
-st.subheader("🔮 Test setinin son günü için tahmin")
-st.caption(
-    f"{son_test_tarihi:%d.%m.%Y} tarihli feature'larla yapılmış tahmin. "
-    "Güncel veriyle tahmin Faz 2'de eklenecek."
-)
-
-son_satir = X_test.iloc[[-1]]
-o_gunku_fiyat = gercek_fiyat.iloc[-1]
-tahmin_rf_son = model_rf.predict(son_satir)[0]
-tahmin_xgb_son = model_xgb.predict(son_satir)[0]
-
-st.metric(f"{son_test_tarihi:%d.%m.%Y} gram altın fiyatı", f"{o_gunku_fiyat:,.2f} TL")
-col1, col2 = st.columns(2)
-col1.metric("Random Forest — ertesi gün tahmini",
-            f"{o_gunku_fiyat * (1 + tahmin_rf_son / 100):,.2f} TL", delta=f"{tahmin_rf_son:+.3f}%")
-col2.metric("XGBoost — ertesi gün tahmini",
-            f"{o_gunku_fiyat * (1 + tahmin_xgb_son / 100):,.2f} TL", delta=f"{tahmin_xgb_son:+.3f}%")
-
-with st.expander("Kullanılan feature değerlerini gör"):
-    st.dataframe(son_satir.T, width="stretch")
+    st.info(
+        "📌 **Bulgu:** Fiyat seviyesi feature'ları, ağaç modellerinin eğitimde görmediği "
+        "fiyat aralığına çıkamaması yüzünden hiçbir test yılında baseline'ı geçemedi. "
+        "Durağan feature'larla (getiriler, ortalamadan sapma) bu hata giderildi. Ancak üç farklı "
+        "baseline ile yapılan karşılaştırma, modelin güvenilir bir avantaj sağlamadığını gösteriyor. "
+        "Haftalık ufuktaki görünür başarı, TL'nin değer kaybından kaynaklanan yükseliş eğiliminden geliyor."
+    )
