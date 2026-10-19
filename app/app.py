@@ -81,8 +81,10 @@ col1, col2, col3, col4 = st.columns(4)
 col1.metric("Gram altın (TL)", f"{son['gram_altin_try']:,.2f}", delta=f"{gunluk_degisim:+.2f}%")
 col2.metric("Ons altın (USD)", f"{son['gold_usd']:,.2f}")
 col3.metric("Dolar/TL", f"{son['usd_try']:,.4f}")
-if "eur_try" in canli.columns and pd.notna(son.get("eur_try")):
-    col4.metric("Euro/TL", f"{son['eur_try']:,.4f}")
+if "eur_try" in canli.columns and canli["eur_try"].notna().any():
+    son_euro = canli["eur_try"].dropna()
+    col4.metric("Euro/TL", f"{son_euro.iloc[-1]:,.4f}",
+                help=f"Son değer tarihi: {son_euro.index[-1]:%d.%m.%Y}")
 
 son_tarih = canli.index[-1]
 uyari = "  ·  ⏳ Bugünün kapanışı henüz belli değil, değer anlık" if son_tarih.date() == pd.Timestamp.today().date() else ""
