@@ -1,0 +1,6 @@
+# Git'te bütün metin dosyaları LF satır sonuyla saklansın
+* text=auto eol=lf
+
+# Windows'a özel script'ler CRLF kalsın
+*.ps1 text eol=crlf
+*.bat text eol=crlf
