@@ -1,11 +1,16 @@
-"""ham_fiyatlar tablosu için veri kalite kontrolleri. Veriyi değiştirmez, sadece raporlar."""
+"""ham_fiyatlar tablosu için veri kalite kontrolleri. Veriyi değiştirmez, sadece raporlar.
+
+Tek istisna: Veri bayatsa (pipeline yeni veri getirememişse) program hata koduyla (1) biter.
+Böylece Airflow'da bu adım kırmızı yanar ve sonraki adımlar (tahmin) eski veriyle çalışmaz.
+"""
+
+import sys
 
 import pandas as pd
 from sqlalchemy import Engine, text
 
 from load import baglanti_olustur
 
-# (kontrol adı, SQL sorgusu, sorgu parametreleri)
 KONTROLLER = [
     (
         "Pozitif olmayan fiyat",
@@ -60,9 +65,11 @@ KONTROLLER = [
     ),
 ]
 
+# Bu kontrollerden biri bulgu verirse program başarısız sayılır
+ENGELLEYICI = {"Bayat veri"}
+
 
 def kontrol_et(engine: Engine) -> dict[str, pd.DataFrame]:
-    """Bütün kontrolleri çalıştırır, her kontrolün bulgularını döndürür."""
     sonuclar = {}
     with engine.connect() as conn:
         for ad, sql, parametreler in KONTROLLER:
@@ -72,8 +79,15 @@ def kontrol_et(engine: Engine) -> dict[str, pd.DataFrame]:
 
 if __name__ == "__main__":
     engine = baglanti_olustur()
-    for ad, bulgular in kontrol_et(engine).items():
+    sonuclar = kontrol_et(engine)
+    for ad, bulgular in sonuclar.items():
         durum = "[OK] Sorun yok" if bulgular.empty else f"[!] {len(bulgular)} bulgu"
         print(f"\n=== {ad}: {durum} ===")
         if not bulgular.empty:
             print(bulgular.to_string(index=False))
+
+    engelleyenler = [ad for ad in ENGELLEYICI if not sonuclar[ad].empty]
+    if engelleyenler:
+        print(f"\nHATA: Engelleyici kontrol(ler) başarısız: {', '.join(engelleyenler)}")
+        sys.exit(1)
+    print("\nKalite kontrolü geçti.")

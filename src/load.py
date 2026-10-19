@@ -48,6 +48,8 @@ def genisten_uzuna(df: pd.DataFrame) -> pd.DataFrame:
 def yukle(df: pd.DataFrame, engine: Engine) -> int:
     """Veriyi ham_fiyatlar tablosuna upsert eder, yüklenen kayıt sayısını döndürür."""
     kayitlar = genisten_uzuna(df).to_dict(orient="records")
+    if not kayitlar:  # Yüklenecek bir şey yoksa veritabanına boş liste gönderme
+        return 0
     with engine.begin() as conn:
         conn.execute(text(TABLO_SQL))
         conn.execute(text(UPSERT_SQL), kayitlar)
