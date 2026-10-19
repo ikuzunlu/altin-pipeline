@@ -30,8 +30,10 @@ def gram_altin_tablosu(genis: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def feature_uret(genis: pd.DataFrame, duragan: bool = True) -> pd.DataFrame:
-    """Feature'ları ve hedefi (ertesi günün gram altın % değişimi) üretir.
+def feature_uret(genis: pd.DataFrame, duragan: bool = True, ufuk: int = 1) -> pd.DataFrame:
+    """Feature'ları ve hedefi (ufuk kadar iş günü sonraki gram altın % değişimi) üretir.
+
+    ufuk=1 -> yarın, ufuk=5 -> bir hafta sonra, ufuk=20 -> yaklaşık bir ay sonra
 
     duragan=True  -> Yeni yöntem: getiriler, ortalamadan sapmalar, yüzde volatilite
     duragan=False -> Eski yöntem: fiyat seviyeleri (karşılaştırma için)
@@ -57,7 +59,7 @@ def feature_uret(genis: pd.DataFrame, duragan: bool = True) -> pd.DataFrame:
         X["ma_30"] = g.rolling(30).mean()
         X["volatilite_7"] = g.rolling(7).std()
 
-    X["hedef"] = (g.shift(-1) / g - 1) * 100
+    X["hedef"] = (g.shift(-ufuk) / g - 1) * 100
     return X
 
 
