@@ -1,0 +1,14 @@
+name: altin
+version: "1.0.0"
+profile: altin
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+models:
+  altin:
+    staging:
+      +materialized: view    # Staging: Ham tablonun temizlenmiş görünümü, veri kopyalanmaz
+    marts:
+      +materialized: table   # Mart: Uygulamanın ve analizlerin okuduğu hazır tablolar

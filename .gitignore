@@ -12,3 +12,7 @@ models/
 # Python'un ürettiği geçici dosyalar
 __pycache__/
 .ipynb_checkpoints/
+
+# dbt'nin her çalışmada ürettiği dosyalar
+dbt/target/
+dbt/logs/

@@ -33,8 +33,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-
-
   airflow:
     build:
       context: .
@@ -49,6 +47,10 @@ services:
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/airflow
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      DBT_PROFILES_DIR: /opt/altin/dbt
     ports:
       - "8080:8080"
     volumes:
@@ -56,9 +58,29 @@ services:
       - ./src:/opt/altin/src
       - ./data:/opt/altin/data
       - ./models:/opt/altin/models
+      - ./dbt:/opt/altin/dbt
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
+
+  dbt:
+    image: altin-airflow              # Airflow'un image'ını kullanıyor (dbt-venv onun içinde)
+    profiles: ["araclar"]             # "docker compose up" ile başlamaz, sadece elle çağırınca çalışır
+    entrypoint: ["/home/airflow/dbt-venv/bin/dbt"]
+    working_dir: /opt/altin/dbt
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      DBT_PROFILES_DIR: /opt/altin/dbt
+    volumes:
+      - ./dbt:/opt/altin/dbt
+    ports:
+      - "8081:8081"                   # İleride dbt docs için
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:

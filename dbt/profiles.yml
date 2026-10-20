@@ -1,0 +1,13 @@
+# Şifre burada YOK: Hepsi ortam değişkeninden (.env -> docker compose) geliyor. Git'e gönderilebilir.
+altin:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_HOST', 'db') }}"
+      port: "{{ env_var('DBT_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_USER') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      dbname: "{{ env_var('POSTGRES_DB') }}"
+      schema: analitik       # dbt'nin ürettiği her şey bu şemaya gider, ham veri 'public'te kalır
+      threads: 4
