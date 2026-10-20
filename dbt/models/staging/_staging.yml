@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: stg_ham_fiyatlar
+    description: Hafta içi ham kapanışlar
+    columns:
+      - name: anahtar
+        description: tarih + sembol. Her gün her varlık için tek satır olmalı
+        data_tests: [unique, not_null]
+      - name: sembol
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [gold_usd, usd_index, sp500, oil_usd, usd_try, silver_usd, eur_try]
+      - name: kapanis
+        data_tests: [not_null]
+
+  - name: stg_tahminler
+    columns:
+      - name: tahmin_tarihi
+        data_tests: [not_null]

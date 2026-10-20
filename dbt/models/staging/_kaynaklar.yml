@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: ham
+    description: Python pipeline'ının (extract.py + load.py) yazdığı ham tablolar
+    schema: public
+    tables:
+      - name: ham_fiyatlar
+        description: Yahoo Finance günlük kapanışları, uzun format (tarih, sembol, kapanis)
+      - name: tahminler
+        description: predict.py'nin her gün yazdığı tahminler ve sonradan doldurulan gerçekleşenler

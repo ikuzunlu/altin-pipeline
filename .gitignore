@@ -5,8 +5,8 @@
 .env
 
 # Veri ve modeller
-data/
-models/
+/data/
+/models/
 *.pkl
 
 # Python'un ürettiği geçici dosyalar
