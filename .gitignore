@@ -16,3 +16,4 @@ __pycache__/
 # dbt'nin her çalışmada ürettiği dosyalar
 dbt/target/
 dbt/logs/
+dbt/.user.yml
