@@ -87,7 +87,7 @@ if "eur_try" in canli.columns and canli["eur_try"].notna().any():
                 help=f"Son değer tarihi: {son_euro.index[-1]:%d.%m.%Y}")
 
 son_tarih = canli.index[-1]
-uyari = "  ·  ⏳ Bugünün kapanışı henüz belli değil, değer anlık" if son_tarih.date() == pd.Timestamp.today().date() else ""
+uyari = "  ·  ⏳ Bugünün kapanışı henüz belli değil, değer anlık" if son_tarih.date() == pd.Timestamp.now(tz="Europe/Istanbul").date() else ""
 st.caption(f"Son veri tarihi: {son_tarih:%d.%m.%Y}  ·  Toplam {len(canli):,} işlem günü{uyari}")
 
 donem = st.radio("Dönem", ["Son 3 ay", "Son 1 yıl", "Tümü"], horizontal=True)

@@ -24,7 +24,9 @@ def gram_altin_tablosu(genis: pd.DataFrame) -> pd.DataFrame:
     """Modelin kullanacağı günleri seçer ve gram altın fiyatını hesaplar."""
     df = genis.dropna(subset=["gold_usd", "usd_try"])          # Gram altın için ikisi şart
     df = df[df.index.dayofweek < 5]                              # Hafta sonu satırlarını at
-    df = df[df.index < pd.Timestamp.today().normalize()]         # Bugün henüz bitmedi, kapanışı yok
+    # Container'ın saati UTC: Gece 01:00 TR = 22:00 UTC (önceki gün). O yüzden "bugün"ü Türkiye saatiyle alıyoruz
+    bugun_tr = pd.Timestamp.now(tz="Europe/Istanbul").normalize().tz_localize(None)
+    df = df[df.index < bugun_tr]                                 # Bugün henüz bitmedi, kapanışı yok
     df = df.ffill()                                              # Diğer varlıkların tatil boşlukları
     df["gram_altin_try"] = df["gold_usd"] / ONS_GRAM * df["usd_try"]
     return df
