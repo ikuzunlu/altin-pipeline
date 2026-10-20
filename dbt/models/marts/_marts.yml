@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: gram_altin_gunluk
+    description: Her tam iş günü için gram altın (TL) fiyatı ve günlük değişimi
+    columns:
+      - name: tarih
+        data_tests: [unique, not_null]
+      - name: gram_altin_try
+        description: altın (USD/ons) / 31.1035 * dolar/TL
+        data_tests: [not_null, pozitif]
+      - name: altin_usd
+        data_tests: [pozitif]
+      - name: usd_try
+        data_tests: [pozitif]
+
+  - name: tahmin_karnesi
+    description: Sonucu belli olan tahminlerin hata ve yön analizi, kümülatif ortalamalarla
+    columns:
+      - name: tahmin_tarihi
+        data_tests: [not_null]
+      - name: yon_dogru
+        description: Tahminin işareti gerçekleşenle aynı mı (artış/düşüş tuttu mu)
