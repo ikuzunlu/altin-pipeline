@@ -61,7 +61,11 @@ flowchart LR
 1. **İlk model yeni fiyat seviyelerinde çöküyordu.** Fiyat *seviyeleriyle* eğitilen ağaç modelleri, eğitimde hiç görmedikleri fiyat seviyelerinde (TL'nin değer kaybıyla sürekli yeni zirveler) tahmin üretemiyordu, çünkü ağaçlar ekstrapolasyon yapamaz. Yön isabeti yazı-turanın altındaydı (%49).
 2. **Durağan feature'lar sorunu çözdü.** Getiriler, hareketli ortalamadan sapmalar ve yüzde volatilite kullanınca hata %1,134'ten %1,017'ye indi.
 3. **Ama model baseline'ları geçemiyor.** "Geçmiş ortalama" kuralı kadar iyi, "her gün yükselir" kuralından biraz kötü. Haftalık ufukta görülen "başarı" ise büyük ölçüde TL'nin sürekli değer kaybından (drift) geliyordu.
-
+4. **Ek göstergeler de yardımcı olmadı.** VIX (küresel korku endeksi), ABD 10 yıllık faizi ve BIST 100 ile
+   ayrı ayrı ve birlikte deney yaptım. Kabul kuralını sonuçlara bakmadan önce belirledim (mevcut modelden ve
+   baseline'dan düşük hata, en az 5/8 yılda baseline'ı geçme). Hiçbir grup kuralı geçemedi: MAE 1,016–1,021,
+   baseline 1,013. BIST 100 eklemek modeli biraz kötüleştirdi.
+   
 Bu sonuç piyasaların günlük hareketleri büyük ölçüde fiyatlamasıyla tutarlı. Bu yüzden modelin performansını **canlı** olarak da izliyorum: Her gün yapılan tahmin, bir kez kaydedildikten sonra değiştirilmiyor ve ertesi gün gerçekleşenle karşılaştırılıyor (`analitik.tahmin_karnesi`). Canlı karne Ekim 2026'da başladı.
 
 ![Streamlit](docs/streamlit.png)
