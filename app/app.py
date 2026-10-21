@@ -155,14 +155,49 @@ else:
         col4.metric("Modelin daha iyi olduğu gün", f"{model_kazandi} / {len(sonuclanan)}",
                     help=f"Yön isabeti: %{yon_isabeti * 100:.0f}")
 
+    # ---- Karne tablosu: Her satır = "Bu günün kapanışına bakıp ertesi iş gününü tahmin ettik" ----
     karne = tahminler.sort_values("tahmin_tarihi", ascending=False).head(20).copy()
-    karne["tahmin_tarihi"] = karne["tahmin_tarihi"].dt.strftime("%d.%m.%Y")
-    karne["gerceklesen_yuzde"] = pd.to_numeric(karne["gerceklesen_yuzde"])  # Hepsi boşken None yazısı yerine NaN olsun
-    karne = karne[["tahmin_tarihi", "gram_fiyat", "tahmin_yuzde", "baseline_yuzde", "gerceklesen_yuzde"]]
-    karne.columns = ["Tarih", "Gram altın (TL)", "Tahmin %", "Baseline %", "Gerçekleşen %"]
-    st.dataframe(karne.style.format({"Gram altın (TL)": "{:,.2f}", "Tahmin %": "{:+.3f}",
-                                      "Baseline %": "{:+.3f}", "Gerçekleşen %": "{:+.3f}"}, na_rep="—"),
-                 hide_index=True, width="stretch")
+    karne["gerceklesen_yuzde"] = pd.to_numeric(karne["gerceklesen_yuzde"])
+
+    islem_gunleri = canli.index[canli.index.dayofweek < 5]
+
+    def hedef_gun(tarih):
+        """Tahmin gününden sonraki ilk işlem günü. Henüz veri yoksa bir sonraki iş günü."""
+        sonraki = islem_gunleri[islem_gunleri > tarih]
+        return sonraki[0] if len(sonraki) else tarih + pd.offsets.BDay(1)
+
+    def yon(satir):
+        if pd.isna(satir["gerceklesen_yuzde"]):
+            return "⏳ bekleniyor"
+        ayni_yon = (satir["tahmin_yuzde"] > 0) == (satir["gerceklesen_yuzde"] > 0)
+        return "✅ tuttu" if ayni_yon else "❌ tutmadı"
+
+    karne["hedef_gun"] = pd.to_datetime(karne["tahmin_tarihi"].apply(hedef_gun))
+    karne["tahmin_fiyat"] = karne["gram_fiyat"] * (1 + karne["tahmin_yuzde"] / 100)
+    # Gerçekleşen fiyat: Hedef günün gerçek kapanışı (sonuç belli değilse boş)
+    karne["gercek_fiyat"] = [
+        canli["gram_altin_try"].get(h) if pd.notna(g) else None
+        for h, g in zip(karne["hedef_gun"], karne["gerceklesen_yuzde"])
+    ]
+
+    def tl(x):
+        return "—" if pd.isna(x) else f"{x:,.2f}"
+
+    def yuzde(x):
+        return "—" if pd.isna(x) else f"{x:+.3f}%"
+
+    tablo = pd.DataFrame({
+        "Tahmin günü": karne["tahmin_tarihi"].dt.strftime("%d.%m.%Y"),
+        "Hedef gün": karne["hedef_gun"].dt.strftime("%d.%m.%Y"),
+        "Kapanış (TL)": karne["gram_fiyat"].map(tl),
+        "Model tahmini": karne["tahmin_yuzde"].map(yuzde),
+        "Tahmin edilen (TL)": karne["tahmin_fiyat"].map(tl),
+        "Gerçekleşen (TL)": karne["gercek_fiyat"].map(tl),
+        "Gerçekleşen": karne["gerceklesen_yuzde"].map(yuzde),
+        "Yön": karne.apply(yon, axis=1),
+    })
+    st.caption("Tahmin günü: Modelin baktığı kapanış. Hedef gün: Tahmin edilen gün (bir sonraki işlem günü).")
+    st.dataframe(tablo, hide_index=True, width="stretch")
 
 st.divider()
 
